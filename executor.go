@@ -165,7 +165,7 @@ func (c *cloudflareUpdateExecute) handlePages(pages PagesOperations) error {
 			}
 		}
 		// pages deployment
-		if pages.Cleanup.Enabled && pages.Cleanup.OnlyKeepLatest {
+		if pages.Cleanup.Enabled {
 			latestId := project.LatestDeployment.ID
 			log.Println("latest deploy id:", latestId)
 			// remove history deploy

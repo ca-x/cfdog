@@ -16,7 +16,6 @@ api_key = "xxxx"
 
 ["cfdog/CloudflareUpdateExecutor".pages.cleanup]
 enabled = true
-#only_keep_latest = true
 
 ["cfdog/CloudflareUpdateExecutor".pages.build_env]
 enabled = false

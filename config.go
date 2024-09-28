@@ -18,8 +18,7 @@ type PagesOperations struct {
 
 type PageCleanupOption struct {
 	weaver.AutoMarshal
-	Enabled        bool `toml:"enabled"`
-	OnlyKeepLatest bool `json:"only_keep_latest"`
+	Enabled bool `toml:"enabled"`
 }
 
 type PageBuildEnvOption struct {

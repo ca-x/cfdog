@@ -370,8 +370,7 @@ var _ codegen.AutoMarshal = (*PageCleanupOption)(nil)
 
 type __is_PageCleanupOption[T ~struct {
 	weaver.AutoMarshal
-	Enabled        bool "toml:\"enabled\""
-	OnlyKeepLatest bool "json:\"only_keep_latest\""
+	Enabled bool "toml:\"enabled\""
 }] struct{}
 
 var _ __is_PageCleanupOption[PageCleanupOption]
@@ -381,7 +380,6 @@ func (x *PageCleanupOption) WeaverMarshal(enc *codegen.Encoder) {
 		panic(fmt.Errorf("PageCleanupOption.WeaverMarshal: nil receiver"))
 	}
 	enc.Bool(x.Enabled)
-	enc.Bool(x.OnlyKeepLatest)
 }
 
 func (x *PageCleanupOption) WeaverUnmarshal(dec *codegen.Decoder) {
@@ -389,7 +387,6 @@ func (x *PageCleanupOption) WeaverUnmarshal(dec *codegen.Decoder) {
 		panic(fmt.Errorf("PageCleanupOption.WeaverUnmarshal: nil receiver"))
 	}
 	x.Enabled = dec.Bool()
-	x.OnlyKeepLatest = dec.Bool()
 }
 
 var _ codegen.AutoMarshal = (*PagesOperations)(nil)
