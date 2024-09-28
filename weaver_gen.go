@@ -419,10 +419,11 @@ var _ codegen.AutoMarshal = (*executorConfig)(nil)
 
 type __is_executorConfig[T ~struct {
 	weaver.AutoMarshal
-	Email     string            "toml:\"email\""
-	ApiKey    string            "toml:\"api_key\""
-	DNSUpdate []DNSUpdateOption "toml:\"dns_update\""
-	Pages     PagesOperations   "toml:\"pages\""
+	Email               string            "toml:\"email\""
+	ApiKey              string            "toml:\"api_key\""
+	JobsIntervalSeconds int64             "toml:\"jobs_interval_seconds\""
+	DNSUpdate           []DNSUpdateOption "toml:\"dns_update\""
+	Pages               PagesOperations   "toml:\"pages\""
 }] struct{}
 
 var _ __is_executorConfig[executorConfig]
@@ -433,6 +434,7 @@ func (x *executorConfig) WeaverMarshal(enc *codegen.Encoder) {
 	}
 	enc.String(x.Email)
 	enc.String(x.ApiKey)
+	enc.Int64(x.JobsIntervalSeconds)
 	serviceweaver_enc_slice_DNSUpdateOption_a3196ae3(enc, x.DNSUpdate)
 	(x.Pages).WeaverMarshal(enc)
 }
@@ -443,6 +445,7 @@ func (x *executorConfig) WeaverUnmarshal(dec *codegen.Decoder) {
 	}
 	x.Email = dec.String()
 	x.ApiKey = dec.String()
+	x.JobsIntervalSeconds = dec.Int64()
 	x.DNSUpdate = serviceweaver_dec_slice_DNSUpdateOption_a3196ae3(dec)
 	(&x.Pages).WeaverUnmarshal(dec)
 }

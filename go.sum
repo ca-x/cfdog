@@ -4,6 +4,8 @@ github.com/DataDog/hyperloglog v0.0.0-20220804205443-1806d9b66146 h1:S5WsRc58vIe
 github.com/DataDog/hyperloglog v0.0.0-20220804205443-1806d9b66146/go.mod h1:hFPkswc42pKhRbeKDKXy05mRi7J1kJ2vMNbvd9erH0M=
 github.com/DataDog/mmh3 v0.0.0-20210722141835-012dc69a9e49 h1:EbzDX8HPk5uE2FsJYxD74QmMw0/3CqSKhEr6teh0ncQ=
 github.com/DataDog/mmh3 v0.0.0-20210722141835-012dc69a9e49/go.mod h1:SvsjzyJlSg0rKsqYgdcFxeEVflx3ZNAyFfkUHP0TxXg=
+github.com/RussellLuo/timingwheel v0.0.0-20220218152713-54845bda3108 h1:iPugyBI7oFtbDZXC4dnY093M1kZx6k/95sen92gafbY=
+github.com/RussellLuo/timingwheel v0.0.0-20220218152713-54845bda3108/go.mod h1:WAMLHwunr1hi3u7OjGV6/VWG9QbdMhGpEKjROiSFd10=
 github.com/ServiceWeaver/weaver v0.23.2 h1:qvmO4E1OS2API/puxk8baQzSPP533HFs8Tym7dW/sSA=
 github.com/ServiceWeaver/weaver v0.23.2/go.mod h1:oq4alYn2QTP616jUBvbGj0hNTXhBDC9326YZQlrrwkk=
 github.com/antlr/antlr4/runtime/Go/antlr/v4 v4.0.0-20230305170008-8188dc5388df h1:7RFfzj4SSt6nnvCPbCqijJi1nWCd+TqAT3bYCStRC18=

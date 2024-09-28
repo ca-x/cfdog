@@ -13,6 +13,7 @@ binary = "cfdog"
 ["cfdog/CloudflareUpdateExecutor"]
 email = "czyt@xxxx.com"
 api_key = "xxxx"
+jobs_interval_seconds=1200
 
 ["cfdog/CloudflareUpdateExecutor".pages.cleanup]
 enabled = true

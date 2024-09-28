@@ -3,6 +3,7 @@ module cfdog
 go 1.23
 
 require (
+	github.com/RussellLuo/timingwheel v0.0.0-20220218152713-54845bda3108
 	github.com/ServiceWeaver/weaver v0.23.2
 	github.com/cloudflare/cloudflare-go v0.106.0
 	github.com/sourcegraph/conc v0.3.0

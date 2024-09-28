@@ -4,10 +4,11 @@ import "github.com/ServiceWeaver/weaver"
 
 type executorConfig struct {
 	weaver.AutoMarshal
-	Email     string            `toml:"email"`
-	ApiKey    string            `toml:"api_key"`
-	DNSUpdate []DNSUpdateOption `toml:"dns_update"`
-	Pages     PagesOperations   `toml:"pages"`
+	Email               string            `toml:"email"`
+	ApiKey              string            `toml:"api_key"`
+	JobsIntervalSeconds int64             `toml:"jobs_interval_seconds"`
+	DNSUpdate           []DNSUpdateOption `toml:"dns_update"`
+	Pages               PagesOperations   `toml:"pages"`
 }
 
 type PagesOperations struct {

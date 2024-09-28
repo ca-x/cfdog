@@ -5,11 +5,12 @@ import (
 	"cfdog/internal/pkg/myip"
 	"context"
 	"errors"
+	"github.com/RussellLuo/timingwheel"
 	"github.com/ServiceWeaver/weaver"
 	"github.com/cloudflare/cloudflare-go"
 	"github.com/sourcegraph/conc"
 	"github.com/sourcegraph/conc/iter"
-	"log"
+	"time"
 )
 
 var _ CloudflareUpdateExecutor = (*cloudflareUpdateExecute)(nil)
@@ -25,27 +26,54 @@ type cloudflareUpdateExecute struct {
 	cf *cloudflare.API
 }
 
+type EveryScheduler struct {
+	Interval time.Duration
+}
+
+func (s *EveryScheduler) Next(prev time.Time) time.Time {
+	return prev.Add(s.Interval)
+}
+
 func (c *cloudflareUpdateExecute) Execute(ctx context.Context) error {
 	config := c.Config()
-	for _, updateOpt := range config.DNSUpdate {
-		zoneId, err := c.getZoneId(updateOpt.ZoneName)
-		if err != nil {
-			continue
-		}
-		// update dns
-		for _, name := range updateOpt.DnsRecordNames {
-			records, _, err := c.cf.ListDNSRecords(ctx, cloudflare.ZoneIdentifier(zoneId), cloudflare.ListDNSRecordsParams{Name: name})
-			if err != nil {
-				continue
-			}
-			go c.handleDnsRecord(context.Background(), zoneId, records)
-		}
-
-	}
-	// cleanup pages deployments
-	// update pages env variable
-	go c.handlePages(config.Pages)
+	go c.doJobs(ctx, config)
 	return nil
+}
+
+func (c *cloudflareUpdateExecute) doJobs(ctx context.Context, config *executorConfig) {
+	tw := timingwheel.NewTimingWheel(time.Millisecond, 20)
+	tw.Start()
+	defer tw.Stop()
+	notifyJob := make(chan struct{})
+	t := tw.ScheduleFunc(&EveryScheduler{time.Second * time.Duration(config.JobsIntervalSeconds)}, func() {
+		notifyJob <- struct{}{}
+	})
+
+	for {
+		select {
+		case <-notifyJob:
+			for _, updateOpt := range config.DNSUpdate {
+				zoneId, err := c.getZoneId(updateOpt.ZoneName)
+				if err != nil {
+					continue
+				}
+				// update dns
+				for _, name := range updateOpt.DnsRecordNames {
+					records, _, err := c.cf.ListDNSRecords(ctx, cloudflare.ZoneIdentifier(zoneId), cloudflare.ListDNSRecordsParams{Name: name})
+					if err != nil {
+						continue
+					}
+					go c.handleDnsRecord(ctx, zoneId, records)
+				}
+
+			}
+			// cleanup pages deployments
+			// update pages env variable
+			go c.handlePages(ctx, config.Pages)
+		case <-ctx.Done():
+			t.Stop()
+		}
+	}
 }
 
 func (c *cloudflareUpdateExecute) getZoneId(zoneName string) (string, error) {
@@ -70,35 +98,31 @@ func (c *cloudflareUpdateExecute) handleDnsRecord(ctx context.Context, zoneId st
 		ipv6 = ""
 		err  error
 	)
+	logger := c.Logger(ctx)
 	wg := &conc.WaitGroup{}
 	wg.Go(func() {
 		ipv4, err = myip.GetIPv4Address()
 		if err != nil {
-			log.Printf("fetch ip v4 address failed:%v \n", err)
+			logger.Error("fetch ip v4 address failed", err)
 		}
 
 	})
 	wg.Go(func() {
 		ipv6, err = myip.GetIPv6Address()
 		if err != nil {
-			log.Printf("fetch ip v6 address failed:%v \n", err)
+			logger.Error("fetch ip v6 address failed", err)
 		}
 	})
-
 	wg.Wait()
-
-	log.Println("fetch ips success!")
+	logger.Info("fetch ips success!")
 	for _, r := range recs {
 		ip := ""
-
 		switch r.Type {
 		case "A":
 			ip = ipv4
-
 		case "AAAA":
 			ip = ipv6
 		}
-
 		if ip == "" {
 			continue
 		}
@@ -112,16 +136,19 @@ func (c *cloudflareUpdateExecute) handleDnsRecord(ctx context.Context, zoneId st
 		if updateDnsErr != nil {
 			continue
 		} else {
-			log.Printf("update %s dns record ok,type:%s \n", r.Name, r.Type)
+			logger.Info("update  dns record success", "name", r.Name, "type", r.Type)
 		}
 
 	}
 }
-func (c *cloudflareUpdateExecute) handlePages(pages PagesOperations) error {
-	accountId, err := c.getCloudflareAccountId(context.Background())
+func (c *cloudflareUpdateExecute) handlePages(ctx context.Context, pages PagesOperations) error {
+	logger := c.Logger(ctx)
+
+	accountId, err := c.getCloudflareAccountId(ctx)
 	if err != nil {
 		return err
 	}
+
 	pageOpt := cloudflare.PaginationOptions{Page: 1, PerPage: 5}
 	listOpt := cloudflare.ListPagesProjectsParams{PaginationOptions: pageOpt}
 	projects, _, err := c.cf.ListPagesProjects(context.Background(), cloudflare.UserIdentifier(accountId), listOpt)
@@ -129,7 +156,6 @@ func (c *cloudflareUpdateExecute) handlePages(pages PagesOperations) error {
 		return err
 	}
 	iter.ForEach(projects, func(project *cloudflare.PagesProject) {
-
 		if pages.BuildEnv.Enabled {
 			for envVariableName, repo := range pages.BuildEnv.GithubRelease {
 				releaseVersion, err := ghrelase.GetLatest(repo)
@@ -142,7 +168,7 @@ func (c *cloudflareUpdateExecute) handlePages(pages PagesOperations) error {
 				releaseVersion = releaseVersion[1:]
 
 				ProductionEnv := cloudflare.EnvironmentVariableMap{}
-				log.Printf("update project %s(id:%s) 's mdbok version to :%s", project.Name, project.ID, releaseVersion)
+				logger.Info("start to update project build env", "project name", project.Name, "project id", project.ID, "release version", releaseVersion)
 				ProductionEnv[envVariableName] = &cloudflare.EnvironmentVariable{Value: releaseVersion, Type: cloudflare.PlainText}
 				project.DeploymentConfigs.Production.EnvVars = ProductionEnv
 				_, err = c.cf.UpdatePagesProject(context.Background(),
@@ -167,7 +193,7 @@ func (c *cloudflareUpdateExecute) handlePages(pages PagesOperations) error {
 		// pages deployment
 		if pages.Cleanup.Enabled {
 			latestId := project.LatestDeployment.ID
-			log.Println("latest deploy id:", latestId)
+			logger.Info("get latest deploy info", "latest id", latestId)
 			// remove history deploy
 			deployments, _, err := c.cf.ListPagesDeployments(
 				context.Background(),
@@ -183,13 +209,13 @@ func (c *cloudflareUpdateExecute) handlePages(pages PagesOperations) error {
 			if err != nil {
 				return
 			}
-			log.Printf("start to delete deploy:%+v\r\n", deployments)
+			logger.Info("start to delete deployments", "count", len(deployments))
 			iter.ForEach(deployments, func(deployment *cloudflare.PagesProjectDeployment) {
 				if deployment.ID == latestId {
-					log.Println("skip latest deploy id:", latestId)
+					logger.Info("skip latest deployment", "deployment id", latestId)
 					return
 				}
-				log.Println("try to delate  deployment with id:", deployment.ID)
+				logger.Info("try to delete  deployment", "id", deployment.ID)
 				if err := c.cf.DeletePagesDeployment(
 					context.Background(),
 					cloudflare.AccountIdentifier(accountId),
@@ -199,7 +225,7 @@ func (c *cloudflareUpdateExecute) handlePages(pages PagesOperations) error {
 						Force:        true,
 					},
 				); err != nil {
-					log.Println(err)
+					logger.Error("delete deployment failed", err)
 					return
 				}
 			})
