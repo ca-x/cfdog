@@ -1,14 +1,12 @@
 package main
 
 import (
+	"cfdog/internal/pkg/cfclient"
 	"cfdog/internal/pkg/ghrelase"
-	"cfdog/internal/pkg/myip"
 	"context"
-	"errors"
 	"github.com/RussellLuo/timingwheel"
 	"github.com/ServiceWeaver/weaver"
 	"github.com/cloudflare/cloudflare-go"
-	"github.com/sourcegraph/conc"
 	"github.com/sourcegraph/conc/iter"
 	"time"
 )
@@ -23,7 +21,7 @@ type CloudflareUpdateExecutor interface {
 type cloudflareUpdateExecute struct {
 	weaver.Implements[CloudflareUpdateExecutor]
 	weaver.WithConfig[executorConfig]
-	cf *cloudflare.API
+	cf *cfclient.SimpleClient
 }
 
 type EveryScheduler struct {
@@ -53,7 +51,7 @@ func (c *cloudflareUpdateExecute) doJobs(ctx context.Context, config *executorCo
 		select {
 		case <-notifyJob:
 			for _, updateOpt := range config.DNSUpdate {
-				zoneId, err := c.getZoneId(updateOpt.ZoneName)
+				zoneId, err := c.cf.GetZoneId(updateOpt.ZoneName)
 				if err != nil {
 					continue
 				}
@@ -63,7 +61,7 @@ func (c *cloudflareUpdateExecute) doJobs(ctx context.Context, config *executorCo
 					if err != nil {
 						continue
 					}
-					go c.handleDnsRecord(ctx, zoneId, records)
+					go c.cf.UpdateDnsRecord(ctx, zoneId, records)
 				}
 
 			}
@@ -76,79 +74,12 @@ func (c *cloudflareUpdateExecute) doJobs(ctx context.Context, config *executorCo
 	}
 }
 
-func (c *cloudflareUpdateExecute) getZoneId(zoneName string) (string, error) {
-	return c.cf.ZoneIDByName(zoneName)
-}
-
-func (c *cloudflareUpdateExecute) getCloudflareAccountId(ctx context.Context) (string, error) {
-	accounts, info, err := c.cf.Accounts(ctx, cloudflare.AccountsListParams{})
-	if err != nil {
-		return "", err
-	}
-	if info.Count > 0 {
-		return accounts[0].ID, nil
-	}
-	return "", errors.New("no account found")
-}
-
-func (c *cloudflareUpdateExecute) handleDnsRecord(ctx context.Context, zoneId string, recs []cloudflare.DNSRecord) {
-
-	var (
-		ipv4 = ""
-		ipv6 = ""
-		err  error
-	)
-	logger := c.Logger(ctx)
-	wg := &conc.WaitGroup{}
-	wg.Go(func() {
-		ipv4, err = myip.GetIPv4Address()
-		if err != nil {
-			logger.Error("fetch ip v4 address failed", err)
-		}
-
-	})
-	wg.Go(func() {
-		ipv6, err = myip.GetIPv6Address()
-		if err != nil {
-			logger.Error("fetch ip v6 address failed", err)
-		}
-	})
-	wg.Wait()
-	logger.Info("fetch ips success!")
-	for _, r := range recs {
-		ip := ""
-		switch r.Type {
-		case "A":
-			ip = ipv4
-		case "AAAA":
-			ip = ipv6
-		}
-		if ip == "" {
-			continue
-		}
-		_, updateDnsErr := c.cf.UpdateDNSRecord(ctx, cloudflare.ZoneIdentifier(zoneId), cloudflare.UpdateDNSRecordParams{
-			ID:      r.ID,
-			Type:    r.Type,
-			Content: ip,
-			TTL:     1,
-			Proxied: r.Proxied,
-		})
-		if updateDnsErr != nil {
-			continue
-		} else {
-			logger.Info("update  dns record success", "name", r.Name, "type", r.Type)
-		}
-
-	}
-}
 func (c *cloudflareUpdateExecute) handlePages(ctx context.Context, pages PagesOperations) error {
 	logger := c.Logger(ctx)
-
-	accountId, err := c.getCloudflareAccountId(ctx)
+	accountId, err := c.cf.GetCloudflareAccountId(ctx)
 	if err != nil {
 		return err
 	}
-
 	pageOpt := cloudflare.PaginationOptions{Page: 1, PerPage: 5}
 	listOpt := cloudflare.ListPagesProjectsParams{PaginationOptions: pageOpt}
 	projects, _, err := c.cf.ListPagesProjects(context.Background(), cloudflare.UserIdentifier(accountId), listOpt)
@@ -166,7 +97,6 @@ func (c *cloudflareUpdateExecute) handlePages(ctx context.Context, pages PagesOp
 					continue
 				}
 				releaseVersion = releaseVersion[1:]
-
 				ProductionEnv := cloudflare.EnvironmentVariableMap{}
 				logger.Info("start to update project build env", "project name", project.Name, "project id", project.ID, "release version", releaseVersion)
 				ProductionEnv[envVariableName] = &cloudflare.EnvironmentVariable{Value: releaseVersion, Type: cloudflare.PlainText}
@@ -230,18 +160,13 @@ func (c *cloudflareUpdateExecute) handlePages(ctx context.Context, pages PagesOp
 				}
 			})
 		}
-
 	})
-
 	return nil
 }
 
-func (c *cloudflareUpdateExecute) Init(context.Context) error {
+func (c *cloudflareUpdateExecute) Init(ctx context.Context) error {
 	config := c.Config()
-	options := []cloudflare.Option{
-		cloudflare.UsingRetryPolicy(5, 1, 1),
-	}
-	cf, err := cloudflare.New(config.ApiKey, config.Email, options...)
+	cf, err := cfclient.NewSimpleClient(config.ApiKey, config.Email, c.Logger(ctx))
 	if err != nil {
 		return err
 	}
